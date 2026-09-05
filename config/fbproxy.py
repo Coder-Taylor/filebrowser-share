@@ -3,10 +3,12 @@
 
 部署：存为 /srv/fbproxy.py，配 systemd 常驻（端口 8086，仅监听 127.0.0.1），
 nginx 将 /api/login 指向本服务。
+2026-09-06 起：FileBrowser 改到本地 Windows 经 frp 隧道提供，
+BACKEND 转发目标从 8085(Docker) 改为 8087(frps 数据口)。
 """
 import http.server, json, http.client
 
-BACKEND = ("127.0.0.1", 8085)
+BACKEND = ("127.0.0.1", 8087)
 HOP = {"host","content-length","connection","keep-alive","proxy-connection",
        "transfer-encoding","upgrade","te"}
 
@@ -28,7 +30,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             pass  # 非 JSON 原样转发
         h = {k: v for k, v in self.headers.items()
              if k.lower() not in HOP}
-        h["Host"] = "127.0.0.1:8085"
+        h["Host"] = "127.0.0.1:8087"
         c = http.client.HTTPConnection(*BACKEND, timeout=60)
         try:
             c.request("POST", self.path, body=raw, headers=h)

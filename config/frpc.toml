@@ -1,0 +1,21 @@
+# frpc 客户端配置模板(Windows 本地,实际部署: D:\Tools\fbwin\frpc.toml,用 NSSM 注册为 FrpcSvc 服务)
+# <SERVER_IP> = 47 公网 IP;token 与 47 frps.toml 一致
+# 注意:文件必须是无 BOM 的 UTF-8(Go toml 解析器不认 BOM,Out-File 默认会带 BOM 导致解析失败)
+
+serverAddr = "<SERVER_IP>"
+serverPort = 443
+
+auth.method = "token"
+auth.token = "<FRP_TOKEN>"
+
+# 断线/首次失败永不退出,指数退避自动重连(校园网抖动、服务重启后的自愈关键)
+loginFailExit = false
+transport.heartbeatInterval = 10
+transport.heartbeatTimeout = 30
+
+[[proxies]]
+name = "filebrowser"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 8085
+remotePort = 8087

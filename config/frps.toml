@@ -1,0 +1,12 @@
+# frps 服务端配置模板(实际部署在 47:/etc/frp/frps.toml)
+# 对应 frp 版本 v0.71.0 —— 47 的 frps 与本地 Windows 的 frpc 必须同版本
+# token 用 <FRP_TOKEN> 占位,真实值随机生成(openssl rand -hex 16),只存在于服务器与本地 frpc.toml
+
+bindAddr = "0.0.0.0"
+bindPort = 443   # 注意:选择"系统预置放行"的 443(曾出现阿里云后加防火墙规则不生效的异常,预置端口无此问题;将来上 HTTPS 需再挪)
+
+auth.method = "token"
+auth.token = "<FRP_TOKEN>"
+
+# 只允许远端开 8087 这一个数据端口(供本机 nginx 回源),防止误开其他端口
+allowPorts = [{ start = 8087, end = 8087 }]
