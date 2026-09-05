@@ -1,0 +1,18 @@
+# —— 凭据与环境，禁止入库 ——
+credentials.txt
+*.secret
+.env
+secrets/
+*.key
+# 若日后把真实密码备忘放这里，务必忽略：
+密码*.txt
+
+# —— 系统文件 ——
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# —— 传输临时文件 / 日志 ——
+pr_part_*
+*.output
+/tmp/

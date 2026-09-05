@@ -1,0 +1,31 @@
+# FileBrowser 容器启动参数（实际环境）
+
+## 实际运行参数
+镜像 : filebrowser/filebrowser:latest   (实测 2.63.23)
+用户 : root（容器内）
+挂载 :
+  -v /srv/alist/storage:/srv     # 网盘根目录（FileBrowser 里的路径 = /srv）
+  -v /srv/fb:/database           # sqlite 数据库目录
+端口 : 主机 8085 -> 容器 80
+重启 : always
+命令行 : （docker run 时未显式指定 Cmd，使用镜像默认）
+
+## 等价的 docker run 模板
+# 第一次创建（把 <你的数据盘目录> 换成真实路径）
+docker run -d \
+  --name filebrowser \
+  --user root \
+  -v /srv/alist/storage:/srv \
+  -v /srv/fb:/database \
+  -p 8085:80 \
+  --restart always \
+  filebrowser/filebrowser:latest
+
+# 端口映射关系：nginx(对外 8081) -> 本容器(8085) ；别直接对外暴露 8085
+
+## 查看 / 导出配置
+docker inspect filebrowser --format '{{json .HostConfig.Binds}} {{json .HostConfig.PortBindings}}'
+
+## 说明
+- FileBrowser 根路径 /srv 里只放顶层目录（公共/、私人/）。
+- 数据库 /database/filebrowser.db 存用户与设置，改库前先 docker stop filebrowser，避免 sqlite 锁库。

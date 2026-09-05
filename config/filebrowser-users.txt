@@ -1,0 +1,34 @@
+# FileBrowser 账号与权限（模板，占位符替换，真实密码勿入库）
+
+## 命令注意事项
+- 改用户前先停容器，避免 sqlite 锁库：docker stop filebrowser
+- 改完再启动：docker start filebrowser
+- 注意：`users add` 的密码是【位置参数】，不是 --password 旗标
+
+## 只读 guest（scope 指向 /公共 → 只能看到公共内容）
+docker stop filebrowser
+docker run --rm --entrypoint filebrowser -v /srv/fb:/database --user root \
+  filebrowser/filebrowser users add guest '<GUEST_PASSWORD>' \
+  --scope /公共 --viewMode list \
+  --perm.admin=false --perm.execute=false --perm.create=false \
+  --perm.rename=false --perm.modify=false --perm.delete=false --perm.share=false \
+  -d /database/filebrowser.db
+docker start filebrowser
+
+# 改已有用户（含改 locale 为简体中文）
+docker run --rm --entrypoint filebrowser -v /srv/fb:/database --user root \
+  filebrowser/filebrowser users update admin --password '<NEW>' --locale zh-cn --viewMode list \
+  -d /database/filebrowser.db
+
+# 全局默认设置（语言/站点名）
+docker run --rm --entrypoint filebrowser -v /srv/fb:/database --user root \
+  filebrowser/filebrowser config set --locale zh-cn --branding.name '共享网盘' \
+  -d /database/filebrowser.db
+
+## 隔离效果（已验证）
+- guest scope = /公共：登录后只能看到 公共/ 下内容
+- guest 直接访问 /私人 路径 → HTTP 404（越权被拒）
+- admin scope = /：看到 公共/ 与 私人/
+
+## 关键坑
+- FileBrowser 简体中文 locale key 是 zh-cn，不是 zh（填 zh 会退回英文）
