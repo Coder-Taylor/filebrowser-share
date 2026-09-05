@@ -4,6 +4,9 @@ credentials.txt
 .env
 secrets/
 *.key
+
+# —— 运行实例(真身):真实 IP/token/密码/db,物理隔离在 git 之外 ——
+runtime/
 # 若日后把真实密码备忘放这里，务必忽略：
 密码*.txt
 

@@ -1,31 +1,27 @@
 # FileBrowser 本地 Windows 运行方式(迁移后实际部署,2026-09-06)
 # 版本:filebrowser 2.63.23 windows-amd64(与 47 原容器同版本,i18n 补丁文件名 hash 才一致)
-# 目录:D:\Tools\fbwin\
+# 目录:runtime/fbwin/(运行实例,整个目录被 .gitignore 忽略,不进仓库)
 
-## 1. 启动命令(手动测试)
-filebrowser.exe -r E:\NetDist -a 127.0.0.1 -p 8085 -d D:\Tools\fbwin\filebrowser.db
+## 1. 启动命令(手动测试,cd 到 runtime\fbwin 后)
+filebrowser.exe -r E:\NetDist -a 127.0.0.1 -p 8085 -d filebrowser.db
 #   -r  网盘根 = E:\NetDist(顶层:公共/ 私人/)
 #   -a  只监听 127.0.0.1(仅 frpc 回连,不暴露局域网)
 #   -p  8085(与 frpc localPort 一致)
 #   -d  数据库:从 47 的 /srv/fb/filebrowser.db 拷回(账号/guest scope/zh-cn locale 全保留)
 
-## 2. 注册为 Windows 服务(NSSM,自动启动 + 崩溃 5s 重启)
-nssm.exe install FileBrowserSvc "D:\Tools\fbwin\filebrowser.exe"
-nssm.exe set FileBrowserSvc AppParameters "-r E:\NetDist -a 127.0.0.1 -p 8085 -d D:\Tools\fbwin\filebrowser.db"
-nssm.exe set FileBrowserSvc AppDirectory "D:\Tools\fbwin"
-nssm.exe set FileBrowserSvc AppStdout "D:\Tools\fbwin\logs\filebrowser-svc.out.log"
-nssm.exe set FileBrowserSvc AppStderr "D:\Tools\fbwin\logs\filebrowser-svc.err.log"
-nssm.exe set FileBrowserSvc AppExit Default Restart
-nssm.exe set FileBrowserSvc AppRestartDelay 5000
-nssm.exe set FileBrowserSvc Start SERVICE_AUTO_START
+## 2. 注册为 Windows 服务
+# 方式:右键 runtime\fbwin\register-services.ps1 → "使用 PowerShell 运行"(自动提权)
+# ⚠️ 必须用 PowerShell 重注册,不要用 cmd 批处理:cmd 解析中文路径(项目路径含中文)会失败
+# 服务:NSSM 包装 FileBrowserSvc / FrpcSvc,Automatic 启动 + 崩溃 5s 重启
+# 卸载/重装可重复运行 register-services.ps1(自动 sc delete 旧注册再装)
 
 ## 3. 常用操作
 sc query FileBrowserSvc              # 查状态
-nssm.exe restart FileBrowserSvc      # 重启
-nssm.exe remove FileBrowserSvc confirm  # 卸载
+双击 网盘-停止.cmd / 网盘-启动.cmd   # 开关网盘(自动提权)
+# 服务日志:logs\filebrowser-svc.out.log / frpc-svc.out.log
 
 ## 4. 注意事项
 - 网盘根结构必须保留顶层 公共/、私人/(guest scope=/公共 依赖;直接访问 scope 外返回 404)
 - 目录内容更新 = 直接往 E:\NetDist 复制文件,无需任何网络操作(已无"上传到 47"环节)
 - 升级 FileBrowser 后需重做 i18n 补丁(见 docs/03,hash 文件名会变)
-- 电脑关机/睡眠 = 网盘下线;恢复后 NSSM 自动拉起两个服务,frpc 自动重连 47
+- 电脑关机/睡眠 = 网盘下线;恢复后服务自动拉起,frpc 自动重连 47
