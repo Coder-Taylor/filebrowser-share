@@ -37,7 +37,7 @@ if ($ServerAddr -eq '') { Die '未输入服务器地址' }
 if ($Invite -eq '')     { $Invite = Read-Host '输入站主发的邀请码(形如 PAN-XXXXXXXX)' }
 if ($Invite -eq '')     { Die '未输入邀请码' }
 if ($DataDir -eq '')    {
-    $d = Read-Host "放网盘内容的文件夹(可留空 = 本目录下的 我的网盘)"
+    $d = Read-Host '一个空文件夹(作为网盘的文件夹,如 D:\我的网盘;可留空=在本目录自动建"我的网盘")'
     $DataDir = if ($d -eq '') { Join-Path $PSScriptRoot '我的网盘' } else { $d }
 }
 if ($AdminPassword -eq '') {
