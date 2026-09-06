@@ -73,6 +73,10 @@ if ($BrandName -eq '') { $BrandName = $SiteName }
 $fbSvc = "FB-$SiteName"; $frpSvc = "FRP-$SiteName"
 if (Get-Service $fbSvc,$frpSvc -ErrorAction SilentlyContinue) { Die "services $fbSvc/$frpSvc already exist - site already deployed?" }
 
+# pick a free LOCAL port for this site's filebrowser (multiple sites can share one BinDir)
+$localPort = 18085
+while (Get-NetTCPConnection -LocalPort $localPort -State Listen -ErrorAction SilentlyContinue) { $localPort++ }
+
 # ---------- dirs & db ----------
 New-Item -ItemType Directory -Force $DataDir | Out-Null
 New-Item -ItemType Directory -Force (Join-Path $DataDir $PUB) | Out-Null
@@ -118,7 +122,7 @@ transport.heartbeatTimeout = 30
 name = "filebrowser-$SiteName"
 type = "tcp"
 localIP = "127.0.0.1"
-localPort = 18085
+localPort = $localPort
 remotePort = $RemotePort
 "@
 $frpcCfg = Join-Path $BinDir "frpc-$SiteName.toml"
@@ -126,7 +130,7 @@ $frpcCfg = Join-Path $BinDir "frpc-$SiteName.toml"
 
 # ---------- register services ----------
 function Nssm($a){ & $nssmExe @a; if ($LASTEXITCODE -ne 0) { Die "nssm $($a -join ' ') failed" } }
-$fbArgs = "-r `"$DataDir`" -a 127.0.0.1 -p 18085 -d `"$db`""
+$fbArgs = "-r `"$DataDir`" -a 127.0.0.1 -p $localPort -d `"$db`""
 Nssm @('install',$fbSvc,$fbExe)
 Nssm @('set',$fbSvc,'AppParameters',$fbArgs)
 Nssm @('set',$fbSvc,'AppDirectory',$BinDir)

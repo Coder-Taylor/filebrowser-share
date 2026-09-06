@@ -16,6 +16,8 @@
 - **多站点平台**：站主(47)用 `pan-ctl` 接入多台终端，每台终端一个完全隔离的网盘(独立 frps/token/db)，见 `docs/06-多站点平台.md`
 - **指针功能**：开启后可用符号链接把电脑其他位置的文件夹"挂"进网盘浏览/下载，无需复制
 - **一键部署**：`config/deploy/deploy-site.ps1` 让任意 Windows 一键搭好一个站点
+- **朋友自助安装**：owner 在网页门户发一次性邀请码 → 朋友双击 `install-site.ps1` 输码选文件夹，自动生成完整网盘（见 `docs/07`）
+- **owner 网页门户**：SSH 隧道访问 `localhost:9200`，看所有站点/发邀请/停启删（见 `docs/07`）
 
 ## 技术栈
 
@@ -65,11 +67,14 @@ E:\NetDist（FileBrowser 根 ≈537G）
 │   ├── 04-大文件上传经验.md      # 历史经验：47 存储时代的分片上传（现已被本地存储取代）
 │   ├── 05-本地存储与frp穿透.md   # ★ 2026-09-06 架构：本地 FileBrowser + frp 隧道
 │   ├── 06-多站点平台.md          # ★ 站主 + 多终端隔离网盘 + 指针 + 一键部署
+│   ├── 07-产品化安装与owner门户.md# ★ 邀请码安装包 + owner 网页门户
 │   └── 给朋友的使用说明.md       # 模板（真实密码当面给，不入仓库）
 ├── config/
 │   ├── deploy/
 │   │   ├── pan-ctl               # 站主工具模板(部署到 47:/usr/local/bin/pan-ctl)
-│   │   └── deploy-site.ps1       # 客户端一键部署(Windows)
+│   │   ├── pan-web.py            # owner 门户 + 邀请码服务(部署到 47)
+│   │   ├── deploy-site.ps1       # 客户端手动部署(Windows)
+│   │   └── install-site.ps1      # 客户端自助安装向导(邀请码,UTF-8 BOM)
 │   ├── nginx-site.conf           # 47 nginx 反代（回源 8087；多站由 pan-ctl 生成）
 │   ├── fbproxy.py                # 登录空格过滤器（参数化: <监听口> <转发口>）
 │   ├── frps.toml / frpc.toml     # frps/frpc 配置模板（token 占位）

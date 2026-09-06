@@ -39,9 +39,12 @@ ok(){  echo "✓ $*"; }
 pub_ip(){ [ -f "$PUB_IP_FILE" ] && cat "$PUB_IP_FILE" || die "先写公网 IP: echo <公网IP> > $PUB_IP_FILE"; }
 port_free(){ ! ss -ltn | awk '{print $4}' | grep -qE ":$1\$"; }
 next_idx(){
-  local max=1
-  while IFS='|' read -r i _; do [ -n "$i" ] && [ "$i" -gt "$max" ] && max=$i; done < "$SITES"
-  echo $((max+1))
+  # reuse first free slot in 2..8 (HTTP then lands 8082..8088; 8089 is reserved for the owner portal)
+  local i
+  for i in $(seq 2 8); do
+    grep -qE "^$i\|" "$SITES" || { echo "$i"; return; }
+  done
+  echo ""
 }
 name_exists(){ grep -qE "^\|*.*\|$1\||^[0-9]+\|$1\|" "$SITES"; }
 
@@ -50,7 +53,8 @@ cmd_add(){
   echo "$name" | grep -qE '^[a-zA-Z0-9-]+$' || die "站点名只能用字母数字和连字符"
   name_exists "$name" && die "站点 $name 已存在"
   local idx next http ctrl data fb tok
-  idx=$(next_idx); http=$((8080+idx)); ctrl=$((7000+idx)); data=$((8090+idx)); fb=$((9000+idx))
+  idx=$(next_idx); [ -n "$idx" ] || die "站点数已达上限(8 个),请先删站或扩展端口段"
+  http=$((8080+idx)); ctrl=$((7000+idx)); data=$((8090+idx)); fb=$((9000+idx))
   for p in $ctrl $http $data $fb; do port_free "$p" || die "端口 $p 被占用,换名字重试"; done
   tok=$(openssl rand -hex 16)
 
