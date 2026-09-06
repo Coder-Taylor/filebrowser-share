@@ -160,6 +160,8 @@ table{{border-collapse:collapse;width:100%;margin:10px 0}}td,th{{border:1px soli
 code{{background:#f4f4f4;padding:2px 6px}}button{{cursor:pointer}}</style></head><body>
 <h2>🖥 网盘平台 · 站主门户</h2>
 <p>访问说明:本页经 SSH 隧道访问(浏览器开 localhost:9200)。朋友站用户由该站 admin 自管(数据在各自电脑)。</p>
+<p><a href="/dist/pan-install.zip" style="font-size:16px">⬇ 下载「给朋友的安装包」pan-install.zip</a>
+<small>(解压后把整个文件夹 + 一行邀请码发给朋友)</small></p>
 <h3>站点总览</h3><table><tr><th>站点</th><th>公网地址</th><th>状态</th><th>token前6</th><th>操作</th></tr>{rows}</table>
 <h3>发新邀请码</h3>
 <form method="post"><input name="act" type="hidden" value="newinv"/>
@@ -172,6 +174,17 @@ code{{background:#f4f4f4;padding:2px 6px}}button{{cursor:pointer}}</style></head
 
     def do_GET(self):
         p = urllib.parse.urlparse(self.path)
+        if p.path == "/dist/pan-install.zip":
+            if not self._authed(): return self._send(403, "login first")
+            fn = "/srv/pan-dist/pan-install.zip"
+            if os.path.exists(fn):
+                data = open(fn, "rb").read()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/zip")
+                self.send_header("Content-Disposition", 'attachment; filename="pan-install.zip"')
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers(); self.wfile.write(data); return
+            return self._send(404, "dist not found")
         if p.path == "/" and self._authed():
             return self._send(200, self._page())
         if p.path == "/login":

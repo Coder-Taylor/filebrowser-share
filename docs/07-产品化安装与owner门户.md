@@ -50,6 +50,7 @@ ssh -L 9200:127.0.0.1:9100 root@<SERVER_IP>     # 保持这个窗口开着
 ```
 > 可以做一个 `看门户.bat`:`ssh -N -L 9200:127.0.0.1:9100 root@<SERVER_IP> && start http://localhost:9200`
 > owner 密码设置/找回:47 上 `pan-web setpass '<新密码>'`(密码以 salt+sha256 存 `/etc/frp-sites/owner.hash`,root 600)。
+> **给朋友的安装包在门户里直接下载**:门户页顶部「⬇ 下载 pan-install.zip」(内含 install-site.ps1 + filebrowser/frpc/nssm,约 22MB,存 `/srv/pan-dist/pan-install.zip`)。更新包后覆盖该文件即可。
 
 ## 能力边界(重要,README 同)
 
