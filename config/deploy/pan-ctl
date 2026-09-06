@@ -1,0 +1,202 @@
+#!/usr/bin/env bash
+# ============================================================
+# pan-ctl —— FileBrowser 多站点 站主编排工具(部署在 47:/usr/local/bin/pan-ctl)
+# 用途:站主(owner)在 47 上管理"每台终端一个独立网盘"的站点生命周期。
+#
+# 概念:一个"站点"= 一台终端电脑上跑的 FileBrowser + frpc。
+#   站1(main)= 站主自己的部署(legacy,走 443/8087,不在本工具管理范围,protected)。
+#   站点2+ 由本工具创建:每站 独立 frps(控制口+token) + 独立 nginx 口 + 独立 fbproxy。
+#
+# 用法:
+#   pan-ctl add-site <name>            # 新建站点,分配端口,输出"接入凭据"
+#   pan-ctl ls                          # 列出所有站点与在线状态
+#   pan-ctl show <name>                 # 重看该站接入凭据
+#   pan-ctl stop <name> | start <name>  # 停/启该站隧道(nginx 仍开,停=公网 502)
+#   pan-ctl reset-token <name>          # 换新 token(旧 frpc 掉线,须重新部署/改 frpc.toml)
+#   pan-ctl rm-site <name>              # 彻底删除站点(停服务、删配置/注册表)
+#
+# 端口分配(站主公式,idx>=2):
+#   ctrl(frps 控制,公网需放行 7000-7010) = 7000+idx
+#   http(对外网址, 公网放行 8082-8090)  = 8080+idx
+#   data(frp 数据口,仅 nginx 回环,无需放行)= 8090+idx
+#   fb  (fbproxy,127.0.0.1)             = 9000+idx
+#
+# 依赖:47 上已装 frps(/usr/local/bin/frps)、python3、nginx、openssl。
+# 公网 IP 放 /etc/frp-sites/public_ip(站主填一次;本文件不入仓库,脱敏)。
+# ============================================================
+set -euo pipefail
+
+REG=/etc/frp-sites
+SITES=$REG/sites.conf
+PUB_IP_FILE=$REG/public_ip
+NGINX_AVAIL=/etc/nginx/sites-available
+FRP_BIN=/usr/local/bin/frps
+mkdir -p "$REG"; chmod 700 "$REG"; touch "$SITES"; chmod 600 "$SITES"
+
+die(){ echo "✗ $*" >&2; exit 1; }
+ok(){  echo "✓ $*"; }
+
+pub_ip(){ [ -f "$PUB_IP_FILE" ] && cat "$PUB_IP_FILE" || die "先写公网 IP: echo <公网IP> > $PUB_IP_FILE"; }
+port_free(){ ! ss -ltn | awk '{print $4}' | grep -qE ":$1\$"; }
+next_idx(){
+  local max=1
+  while IFS='|' read -r i _; do [ -n "$i" ] && [ "$i" -gt "$max" ] && max=$i; done < "$SITES"
+  echo $((max+1))
+}
+name_exists(){ grep -qE "^\|*.*\|$1\||^[0-9]+\|$1\|" "$SITES"; }
+
+cmd_add(){
+  local name="${1:-}"; [ -n "$name" ] || die "用法: pan-ctl add-site <name>"
+  echo "$name" | grep -qE '^[a-zA-Z0-9-]+$' || die "站点名只能用字母数字和连字符"
+  name_exists "$name" && die "站点 $name 已存在"
+  local idx next http ctrl data fb tok
+  idx=$(next_idx); http=$((8080+idx)); ctrl=$((7000+idx)); data=$((8090+idx)); fb=$((9000+idx))
+  for p in $ctrl $http $data $fb; do port_free "$p" || die "端口 $p 被占用,换名字重试"; done
+  tok=$(openssl rand -hex 16)
+
+  # 1) frps 配置 + systemd
+  cat > "/etc/frp/frps-$name.toml" <<EOF
+bindAddr = "0.0.0.0"
+bindPort = $ctrl
+auth.method = "token"
+auth.token = "$tok"
+allowPorts = [{ start = $data, end = $data }]
+EOF
+  cat > "/etc/systemd/system/frps-$name.service" <<EOF
+[Unit]
+Description=frp server for site $name
+After=network.target
+[Service]
+Type=simple
+ExecStart=$FRP_BIN -c /etc/frp/frps-$name.toml
+Restart=always
+RestartSec=3
+[Install]
+WantedBy=multi-user.target
+EOF
+
+  # 2) fbproxy systemd
+  cat > "/etc/systemd/system/fbproxy-$name.service" <<EOF
+[Unit]
+Description=login space filter for site $name
+After=network.target
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /srv/fbproxy.py $fb $data
+Restart=always
+RestartSec=3
+[Install]
+WantedBy=multi-user.target
+EOF
+
+  # 3) nginx 站点(i18n 补丁共用 /srv/fb-custom; FileBrowser 须全站 2.63.23)
+  cat > "$NGINX_AVAIL/pan-$name" <<EOF
+# 网盘站点 $name(pan-ctl 生成)——对外 http://<SERVER_IP>:$http
+server {
+    listen $http;
+    server_name _;
+    client_max_body_size 0;
+    proxy_request_buffering off;
+    proxy_buffering off;
+
+    location = /api/login { proxy_pass http://127.0.0.1:$fb; proxy_read_timeout 60s; }
+
+    location = /static/assets/i18n-C0UlxgXD.js {
+        alias /srv/fb-custom/i18n-C0UlxgXD.js;
+        default_type application/javascript;
+        add_header Cache-Control "no-cache";
+    }
+
+    location / {
+        proxy_pass http://127.0.0.1:$data;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+    }
+}
+EOF
+  ln -sf "$NGINX_AVAIL/pan-$name" "/etc/nginx/sites-enabled/pan-$name"
+
+  # 4) 注册表(仅 root 可读,含真实 token)
+  echo "$idx|$name|$http|$ctrl|$data|$fb|$tok" >> "$SITES"
+
+  systemctl daemon-reload
+  systemctl enable --now "frps-$name" "fbproxy-$name" >/dev/null 2>&1
+  nginx -t >/dev/null 2>&1 && systemctl reload nginx || { echo "nginx 配置有误,请检查 $NGINX_AVAIL/pan-$name" >&2; }
+
+  ok "站点 $name 已创建"
+  echo
+  echo "=================================================="
+  echo " 站点接入信息 · $name"
+  echo "=================================================="
+  echo " 管理网址(给 admin 用):  http://$(pub_ip):$http"
+  echo " 隧道参数(给 deploy-site.ps1 填):"
+  echo "   serverAddr = $(pub_ip)"
+  echo "   serverPort = $ctrl"
+  echo "   remotePort = $data"
+  echo "   token      = $tok"
+  echo "--------------------------------------------------"
+  echo " ⚠️ 把上面凭据线下发给该站点主人;token 只在 47 上,勿入仓库"
+  echo "=================================================="
+}
+
+cmd_ls(){
+  echo "IDX  NAME      HTTP    CTRL    DATA    TOKEN(前6)  STATUS"
+  echo " 1   main(你)  8081    443     8087    (legacy)   -"
+  while IFS='|' read -r i name http ctrl data fb tok; do
+    [ -z "$i" ] && continue
+    local st="down"; systemctl is-active --quiet "frps-$name" 2>/dev/null && st="up"
+    printf "%3s  %-9s %-7s %-7s %-7s  %-10s  %s\n" "$i" "$name" "$http" "$ctrl" "$data" "${tok:0:6}" "$st"
+  done < "$SITES"
+}
+
+cmd_show(){
+  local name="${1:-}"; [ -n "$name" ] || die "用法: pan-ctl show <name>"
+  local line; line=$(grep -E "^[0-9]+\|$name\|" "$SITES") || die "站点 $name 不存在"
+  IFS='|' read -r i name http ctrl data fb tok <<<"$line"
+  echo "站点 $name:  http://$(pub_ip):$http"
+  echo "serverAddr=$(pub_ip)  serverPort=$ctrl  remotePort=$data  token=$tok"
+}
+
+cmd_act(){ # stop|start
+  local act="$1" name="${2:-}"; [ -n "$name" ] || die "用法: pan-ctl $act <name>"
+  grep -qE "^[0-9]+\|$name\|" "$SITES" || die "站点 $name 不存在"
+  systemctl "$act" "frps-$name" "fbproxy-$name" 2>/dev/null || true
+  ok "$name → $act"
+}
+
+cmd_rm(){
+  local name="${1:-}"; [ -n "$name" ] || die "用法: pan-ctl rm-site <name>"
+  [ "$name" = "main" ] && die "main(站主自身)不可删除"
+  grep -qE "^[0-9]+\|$name\|" "$SITES" || die "站点 $name 不存在"
+  systemctl disable --now "frps-$name" "fbproxy-$name" >/dev/null 2>&1 || true
+  rm -f "/etc/systemd/system/frps-$name.service" "/etc/systemd/system/fbproxy-$name.service" \
+        "/etc/frp/frps-$name.toml" "$NGINX_AVAIL/pan-$name" "/etc/nginx/sites-enabled/pan-$name"
+  sed -i "/|[[:space:]]*$name[[:space:]]*|/d" "$SITES"
+  systemctl daemon-reload; nginx -t >/dev/null 2>&1 && systemctl reload nginx || true
+  ok "站点 $name 已删除"
+}
+
+cmd_reset(){
+  local name="${1:-}"; [ -n "$name" ] || die "用法: pan-ctl reset-token <name>"
+  local line; line=$(grep -E "^[0-9]+\|$name\|" "$SITES") || die "站点 $name 不存在"
+  local tok; tok=$(openssl rand -hex 16)
+  sed -i "s/^\([0-9]*|$name|[^|]*|[^|]*|[^|]*|[^|]*|\).*/\1$tok/" "$SITES"
+  local ctrl data; IFS='|' read -r _ _ _ ctrl data _ _ <<<"$line"
+  sed -i "s/^auth.token = .*/auth.token = \"$tok\"/" "/etc/frp/frps-$name.toml"
+  systemctl restart "frps-$name"
+  ok "$name 新 token: $tok(旧 frpc 会掉线,需同步给 admin)"
+}
+
+cmd="${1:-}"; case "$cmd" in
+  add-site) cmd_add "${2:-}" ;;
+  ls)       cmd_ls ;;
+  show)     cmd_show "${2:-}" ;;
+  stop|start) cmd_act "$cmd" "${2:-}" ;;
+  rm-site)  cmd_rm "${2:-}" ;;
+  reset-token) cmd_reset "${2:-}" ;;
+  *) echo "用法: pan-ctl <add-site|ls|show|stop|start|rm-site|reset-token> [name]"; exit 1 ;;
+esac

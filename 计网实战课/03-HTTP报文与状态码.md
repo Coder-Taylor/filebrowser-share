@@ -26,7 +26,7 @@ HTTP = HyperText Transfer Protocol,一套**双方事先约好的说话格式**�
 **请求**(浏览器 → FileBrowser):
 ```
 GET /api/raw/老友记/第1集.mp4 HTTP/1.1     ← 请求行:方法 路径 版本
-Host: 47.94.146.53:8081                     ← 头部 键:值
+Host: <SERVER_IP>:8081                     ← 头部 键:值
 Range: bytes=1048576-2097151                ← 要哪一段(断点续传)
 X-Auth: eyJhbGciOiJIUzI1NiIs...             ← 我是谁(token)
                                               ← 空行
