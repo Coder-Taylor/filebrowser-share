@@ -153,13 +153,31 @@ class H(BaseHTTPRequestHandler):
             f"<input type='hidden' name='act' value='rm'/><input type='hidden' name='site' value='{s['name']}'/>"
             f"<button style='color:red'>删除</button></form></td></tr>"
             for s in sites)
-        invrows = "".join(f"<tr><td><code>{i['code']}</code></td><td>{i['site']}</td><td>{i['status']}</td></tr>" for i in inv)
+        invrows = "".join(
+            f"<tr><td><code>{i['code']}</code></td><td>{i['site']}</td><td>{i['status']}</td>"
+            f"<td><form method='post' style='display:inline'><input type='hidden' name='act' value='delinv'/>"
+            f"<input type='hidden' name='code' value='{i['code']}'/><button>作废</button></form></td></tr>"
+            for i in inv)
         html = f"""<!doctype html><html><head><meta charset="utf-8"><title>网盘平台 · 站主门户</title>
-<style>body{{font-family:system-ui;max-width:820px;margin:30px auto;padding:0 16px}}
-table{{border-collapse:collapse;width:100%;margin:10px 0}}td,th{{border:1px solid #ddd;padding:6px 9px;text-align:left;font-size:14px}}
-code{{background:#f4f4f4;padding:2px 6px}}button{{cursor:pointer}}</style></head><body>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+body{{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:#eef1f6;color:#1f2937;margin:0;padding:26px 16px}}
+h2{{margin:0;font-size:22px}}
+p{{color:#4b5563;font-size:13px;line-height:1.7;margin:8px 0}}
+h3{{margin:22px 0 8px;font-size:16px;border-left:4px solid #2563eb;padding-left:10px}}
+table{{border-collapse:collapse;width:100%;font-size:14px;background:#fff}}
+th{{text-align:left;padding:9px 10px;border-bottom:2px solid #e5e7eb;color:#374151;background:#f8fafc}}
+td{{padding:9px 10px;border-bottom:1px solid #eef0f3}}
+tr:hover td{{background:#f5f9ff}}
+a{{color:#2563eb;text-decoration:none}}
+button{{background:#2563eb;color:#fff;border:0;border-radius:6px;padding:5px 13px;cursor:pointer;font-size:13px;margin:2px}}
+button:hover{{background:#1d4ed8}}
+input{{padding:7px 11px;border:1px solid #cbd5e1;border-radius:7px;font-size:14px;margin:3px 8px 3px 0;max-width:340px}}
+code{{background:#eef2ff;color:#3730a3;padding:2px 8px;border-radius:5px;font-size:13px}}
+.btn{{display:inline-block;background:#2563eb;color:#fff!important;padding:9px 16px;border-radius:8px;font-weight:600;margin:4px 0}}
+</style></head><body>
 <h2>🖥 网盘平台 · 站主门户</h2>
-<p>访问说明:本页经 SSH 隧道访问(浏览器开 localhost:9200)。朋友站用户由该站 admin 自管(数据在各自电脑)。</p>
+<p>公网直达: <code>http://{pub_ip()}:8089</code> · 朋友站用户由该站 admin 自管(数据在各人电脑)。</p>
 <p><a href="/dist/pan-install.zip" style="font-size:16px">⬇ 下载「给朋友的安装包」pan-install.zip</a>
 <small>(解压后把整个文件夹 + 一行邀请码发给朋友)</small></p>
 <h3>站点总览</h3><table><tr><th>站点</th><th>公网地址</th><th>状态</th><th>token前6</th><th>操作</th></tr>{rows}</table>
@@ -167,7 +185,7 @@ code{{background:#f4f4f4;padding:2px 6px}}button{{cursor:pointer}}</style></head
 <form method="post"><input name="act" type="hidden" value="newinv"/>
 站点名(给该朋友备注,字母数字-):<input name="site" required placeholder="如 xiaozhang"/>
 <button>生成邀请码</button></form>
-<h3>最近邀请码</h3><table><tr><th>邀请码</th><th>站点</th><th>状态</th></tr>{invrows}</table>
+<h3>最近邀请码</h3><table><tr><th>邀请码</th><th>站点</th><th>状态</th><th>操作</th></tr>{invrows}</table>
 <form method="post" style="margin-top:26px"><input type="hidden" name="act" value="logout"/><button>退出</button></form>
 </body></html>"""
         return html
@@ -185,8 +203,14 @@ code{{background:#f4f4f4;padding:2px 6px}}button{{cursor:pointer}}</style></head
                 self.send_header("Content-Length", str(len(data)))
                 self.end_headers(); self.wfile.write(data); return
             return self._send(404, "dist not found")
-        if p.path == "/" and self._authed():
-            return self._send(200, self._page())
+        if p.path == "/":
+            if self._authed():
+                return self._send(200, self._page())
+            self.send_response(302)
+            self.send_header("Location", "/login")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
         if p.path == "/login":
             return self._send(200, "<!doctype html><html><head><meta charset='utf-8'><title>登录</title></head><body><h2>站主门户 · 登录</h2><form method='post' action='/login'><input type='password' name='pw' placeholder='owner 密码' autofocus/><br/><br/><button>登录</button></form></body></html>")
         if p.path == "/health":
@@ -226,6 +250,14 @@ code{{background:#f4f4f4;padding:2px 6px}}button{{cursor:pointer}}</style></head
         site = (d.get("site") or [""])[0]
         if act == "logout":
             return self._send(200, "logged out")
+        if act == "delinv":
+            code = (d.get("code") or [""])[0]
+            if code:
+                keep = [r for r in _invites() if r[0] != code]
+                with open(INVITES, "w") as f:
+                    for r in keep: f.write("|".join(r) + "\n")
+                os.chmod(INVITES, 0o600)
+            return self._send(200, "邀请码已作废<br><a href='/'>← 返回</a>")
         if act == "newinv":
             code = add_invite(site or "site") if site else None
             msg = f"邀请码生成:<br><big><code>{code}</code></big><br><a href='/'>← 返回</a>" if code else "无效站点名"

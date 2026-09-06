@@ -9,15 +9,14 @@
 
 owner 给朋友两样东西:① **安装包**(一个文件夹:install-site.ps1 + filebrowser.exe + frpc.exe + nssm.exe)② **一行邀请码**(如 `PAN-XXXXXXXX`)。
 
-朋友:双击 install-site.ps1 → 按提示:输入 47 地址 → 粘贴邀请码 → 选一个空文件夹当网盘 → 设 admin 密码 → 回车。
+朋友:解压 → 双击 **install-site.bat**(自动申请管理员)→ 按提示:输 47 地址 → 粘贴邀请码 → 选一个空文件夹当网盘 → 设 admin 密码 → 回车。
 完成后的文件夹(自足,可整体搬走):
 
 ```
 我的网盘/
 ├─ 公共/  私人/                 ← 内容根:往 公共 丢文件 = 分享给 guest
 ├─ _面板/                       ← 程序+db+配置+日志(guest 看不到)
-├─ 启动网盘.bat / 停止网盘.bat / 查看状态.bat
-├─ 指针助手.bat                 ← 把别的文件夹挂进网盘(指针默认开启)
+├─ 管理工具/                    ← 启动网盘.bat / 停止网盘.bat / 查看状态.bat / 指针助手(.bat/.ps1)
 └─ 使用说明.txt                 ← 地址/账号/给朋友开号方法/指针边界
 ```
 
@@ -43,12 +42,11 @@ owner 给朋友两样东西:① **安装包**(一个文件夹:install-site.ps1 +
 
 ## owner 门户怎么进
 
-门户监听 47 的 127.0.0.1:9100,**不暴露公网**。owner 通过 SSH 隧道访问:
+门户服务监听 47 的 127.0.0.1:9100,经 nginx 在**公网 8089** 开放(页面需 owner 登录,强口令)。owner 直接浏览器访问:
 ```
-ssh -L 9200:127.0.0.1:9100 root@<SERVER_IP>     # 保持这个窗口开着
-浏览器打开 http://localhost:9200                # 输入 owner 密码
+http://<SERVER_IP>:8089        # 输入 owner 密码
 ```
-> 可以做一个 `看门户.bat`:`ssh -N -L 9200:127.0.0.1:9100 root@<SERVER_IP> && start http://localhost:9200`
+> 旧法(可选,受本机代理影响):`ssh -L 9200:127.0.0.1:9100 root@<SERVER_IP>` → `localhost:9200`。桌面「看门户.bat」直接开公网地址。
 > owner 密码设置/找回:47 上 `pan-web setpass '<新密码>'`(密码以 salt+sha256 存 `/etc/frp-sites/owner.hash`,root 600)。
 > **给朋友的安装包在门户里直接下载**:门户页顶部「⬇ 下载 pan-install.zip」(内含 install-site.ps1 + filebrowser/frpc/nssm,约 22MB,存 `/srv/pan-dist/pan-install.zip`)。更新包后覆盖该文件即可。
 
@@ -78,7 +76,7 @@ ssh -L 9200:127.0.0.1:9100 root@<SERVER_IP>     # 保持这个窗口开着
 
 ## 给朋友发安装包(站主动作)
 
-把 `config/deploy/install-site.ps1` 连同四个程序(filebrowser.exe、frpc.exe、nssm.exe、`nssm\nssm.exe`)放一个文件夹打成 zip(install-site.ps1 会按 UTF-8 BOM 保存;从本仓库拿时注意编码)。发 zip + 邀请码给朋友即可。程序版本须为 2.63.23(frp 0.71.0),否则 i18n 补丁/隧道不匹配。
+打包内容:把 `config/deploy/install-site.bat` + `install-site.ps1` + `pan-tools/`(管理工具模板)+ 三个程序 filebrowser.exe / frpc.exe / nssm.exe 放同一文件夹打成 zip(`/srv/pan-dist/pan-install.zip`,门户与主网盘公共目录可下载)。发 zip + 邀请码给朋友即可。程序版本须为 2.63.23(frp 0.71.0),否则 i18n 补丁/隧道不匹配。
 
 ## 故障排查
 
@@ -89,3 +87,10 @@ ssh -L 9200:127.0.0.1:9100 root@<SERVER_IP>     # 保持这个窗口开着
 | 朋友装完打不开网址 | 朋友电脑是否开机/服务 Running;`pan-ctl ls` 该站状态 |
 | 端口撞车 | pan-ctl 上限 8 站;删站用 `pan-ctl rm-site` |
 | 指针列不出 | 确认符号链接(非 junction);朋友是否管理员/开发者模式 |
+
+## 补充(收官)
+
+- 门户**可作废邀请码**:最近邀请码列表每行有「作废」按钮(删除该码,防止误发)。
+- 站点账号建议:各站主人自己在网页为朋友开只读号(scope `/公共`,仅下载)。站主本人主站亦可按此开号(仓库不存真实账号密码,见 runtime 备忘)。
+- 站点内"管理工具"子目录(启动/停止/查看状态/指针助手)模板在 `config/deploy/pan-tools/`;指针助手支持挂文件或文件夹、任意多级子目录、列出/删除。
+- 友情提示:邀请码与站点名、账号密码都是**敏感信息**,只走线下/即时通讯;仓库始终占位。

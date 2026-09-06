@@ -16,14 +16,11 @@ $PRI = [string][char]0x79C1 + [char]0x4EBA   # 私人
 $PANEL = "_面板"
 
 function Relaunch-Elevated {
-    $q = { param($s) if ($s -match '[\s"]') { '"' + ($s -replace '"','\"') + '"' } else { $s } }
-    $al = @('-NoProfile','-ExecutionPolicy','Bypass','-File',"`"$($MyInvocation.MyCommand.Path)`"")
-    foreach ($k in 'Invite','ServerAddr','DataDir','AdminPassword') {
-        $g = Get-Variable -Name $k -ErrorAction SilentlyContinue
-        if ($g -and $g.Value) { $al += ("-" + $k); $al += (& $q ([string]$g.Value)) }
-    }
-    if ($EnablePointer) { $al += '-EnablePointer' }
-    Start-Process powershell -Verb RunAs -ArgumentList $al
+    # Re-run the same interactive script elevated; no params are forwarded
+    # (everything is collected interactively inside the elevated window).
+    Start-Process powershell -Verb RunAs -ArgumentList @(
+        '-NoProfile','-ExecutionPolicy','Bypass','-File',"`"$($MyInvocation.MyCommand.Path)`""
+    )
 }
 function Die($m){ Write-Host "ERROR: $m" -ForegroundColor Red; if (-not $env:PAN_NOPAUSE) { Read-Host '回车退出' }; exit 1 }
 function Ok($m){ Write-Host "OK: $m" -ForegroundColor Green }
@@ -130,59 +127,23 @@ Nssm @('set',$frpSvc,'AppRestartDelay','5000'); Nssm @('set',$frpSvc,'Start','SE
 Nssm @('start',$fbSvc); Nssm @('start',$frpSvc)
 Start-Sleep -Seconds 5
 
-# ---------- 生成启动/停止/状态 bat ----------
+# ---------- 管理工具子目录:启停/状态脚本(模板复制 + 占位替换) ----------
+$toolsDir = Join-Path $DataDir '管理工具'
+New-Item -ItemType Directory -Force $toolsDir | Out-Null
+$tmpl = Join-Path $PSScriptRoot 'pan-tools'
+$gbkW = [System.Text.Encoding]::GetEncoding(936)
+$siteUrl = "http://$ServerAddr`:$httpPort"
+foreach ($f in '启动网盘.bat','停止网盘.bat','查看状态.bat') {
+    $t = [System.IO.File]::ReadAllText((Join-Path $tmpl $f))
+    $t = $t.Replace('__FB__', $fbSvc).Replace('__FRP__', $frpSvc).Replace('__URL__', $siteUrl)
+    $t = (($t -replace "`r`n", "`n") -replace "`n", "`r`n")
+    [System.IO.File]::WriteAllText((Join-Path $toolsDir $f), $t, $gbkW)
+}
 $pubFull = Join-Path $DataDir $PUB; $priFull = Join-Path $DataDir $PRI
-@"
-@echo off
-chcp 65001 >nul
-net session >nul 2>&1 || (powershell -Command "Start-Process '%~f0' -Verb RunAs" & exit /b)
-net start $fbSvc >nul 2>&1
-net start $frpSvc >nul 2>&1
-echo 网盘已启动。访问 http://$ServerAddr`:$httpPort
-pause
-"@ | Set-Content (Join-Path $DataDir '启动网盘.bat') -Encoding Default
-@"
-@echo off
-chcp 65001 >nul
-net session >nul 2>&1 || (powershell -Command "Start-Process '%~f0' -Verb RunAs" & exit /b)
-net stop $fbSvc >nul 2>&1
-net stop $frpSvc >nul 2>&1
-echo 网盘已停止。
-pause
-"@ | Set-Content (Join-Path $DataDir '停止网盘.bat') -Encoding Default
-@"
-@echo off
-chcp 65001 >nul
-sc query $fbSvc | findstr STATE
-sc query $frpSvc | findstr STATE
-echo 访问地址: http://$ServerAddr`:$httpPort
-pause
-"@ | Set-Content (Join-Path $DataDir '查看状态.bat') -Encoding Default
 
-# ---------- 指针助手(ps1 + 薄 bat) ----------
-$pubName = $PUB; $priName = $PRI; $dataFull = $DataDir
-$helper = @"
-`$ErrorActionPreference='Continue'
-`$data = '$dataFull'
-`$pub = Join-Path `$data '$pubName'; `$pri = Join-Path `$data '$priName'
-Write-Host '=== 指针助手:把电脑上别的文件夹"挂"进本网盘(不复制文件)==='
-Write-Host "1) 公共(guest 也能看)   2) 私人(只自己看)"
-`$c = Read-Host '选 1 或 2'
-`$tgt = Read-Host '输入要挂载的完整目录(如 D:\downloads\电影)'
-if (-not (Test-Path `$tgt)) { Write-Host '目录不存在'; Read-Host '回车退出'; exit }
-`$link = if (`$c -eq '1') { Join-Path `$pub ([IO.Path]::GetFileName(`$tgt.TrimEnd('\'))) } else { Join-Path `$pri ([IO.Path]::GetFileName(`$tgt.TrimEnd('\'))) }
-try { New-Item -ItemType SymbolicLink -Path `$link -Target `$tgt -ErrorAction Stop | Out-Null; Write-Host "已挂载: `$link -> `$tgt" -ForegroundColor Green }
-catch { Write-Host "失败: `$(`$_.Exception.Message) (符号链接需要管理员或开发者模式,脚本已尽量提权)" -ForegroundColor Red }
-Write-Host "--- 本网盘已挂载的指针 ---"
-Get-ChildItem `$pub,`$pri -Force -ErrorAction SilentlyContinue | Where-Object { `$_.LinkType } | ForEach-Object { Write-Host ("`$(`$_.FullName) -> `$(`$_.Target)") }
-Read-Host '回车退出'
-"@
-[System.IO.File]::WriteAllText((Join-Path $DataDir '指针助手.ps1'), $helper, (New-Object System.Text.UTF8Encoding($true)))
-@"
-@echo off
-chcp 65001 >nul
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process powershell -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','%~dp0指针助手.ps1'"
-"@ | Set-Content (Join-Path $DataDir '指针助手.bat') -Encoding Default
+# ---------- 指针助手(复制模板;支持挂载 文件/文件夹、可定位子目录与名称、可删除,放 管理工具) ----------
+Copy-Item (Join-Path $tmpl '指针助手.bat')  $toolsDir -Force
+Copy-Item (Join-Path $tmpl '指针助手.ps1')  $toolsDir -Force
 
 # ---------- 使用说明 ----------
 @"
@@ -205,6 +166,15 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process powershell
   大文件断点续传/自动重连都已内置;文件单个放,别用文件夹打包下载大件
   指针(符号链接)放公共 = guest 也能看;想只给自己看就挂到私人
 "@ | Set-Content (Join-Path $DataDir '使用说明.txt') -Encoding Default
+
+# ---------- post-fix all generated .bat: CRLF line endings + drop 'chcp 65001' (cmd reads GBK) ----------
+$gbk = [System.Text.Encoding]::GetEncoding(936)
+Get-ChildItem $DataDir -Filter '*.bat' -Recurse | ForEach-Object {
+    $c = [System.IO.File]::ReadAllText($_.FullName, $gbk)
+    $c = $c -replace '(?i)^chcp 65001 >nul[ \t]*\r?\n', ''
+    $c = (($c -replace "`r`n", "`n") -replace "`n", "`r`n")
+    [System.IO.File]::WriteAllText($_.FullName, $c, $gbk)
+}
 
 # ---------- done ----------
 Ok "网盘装好了: $siteName"
