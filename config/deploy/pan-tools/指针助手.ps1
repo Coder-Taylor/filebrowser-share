@@ -23,6 +23,10 @@ function Do-Mount {
     Write-Host ''
     $src = Read-Host ' 要挂载的源路径(文件夹 或 单个文件,如 D:\Video\狂飙\01.mp4)'
     $src = $src.Trim().Trim('"')
+    if ($src -match '^[A-Za-z]:[\\/]?$') {
+        $src = $src.Substring(0,1) + ':\'    # 盘符(D: / D:/ / D:\) -> 规范成盘根 D:\
+        Write-Host ("  ⚠ 整盘挂载:源 = " + $src + "(挂整个盘到网盘,内容较多请谨慎;放公共=guest 也能看全部)" ) -ForegroundColor Yellow
+    }
     if (-not (Test-Path $src)) { Write-Host '  ✗ 该路径不存在' -ForegroundColor Red; return }
     $isDir = (Get-Item $src).PSIsContainer
     Write-Host ('  源类型: ' + $(if ($isDir) { '文件夹' } else { '文件' }))
@@ -31,6 +35,7 @@ function Do-Mount {
     $sub = (Read-Host '  目标子文件夹(可多级,如 nihao\我好;留空=直接放该区)').Trim()
     $targetDir = if ($sub -eq '') { $base } else { $t = Join-Path $base $sub; [System.IO.Directory]::CreateDirectory($t) | Out-Null; $t }
     $defName = Split-Path $src -Leaf
+    if ([string]::IsNullOrWhiteSpace($defName) -or $defName -match '[\\/:]') { $defName = $src.Substring(0,1) + '盘' }   # 盘根默认名:D: -> "D盘"
     $name = (Read-Host "  在网盘里显示的名字(回车默认 `"$defName`")").Trim()
     if ($name -eq '') { $name = $defName }
     $link = Join-Path $targetDir $name
