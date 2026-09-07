@@ -124,8 +124,13 @@ Nssm @('set',$fbSvc,'AppRestartDelay','5000'); Nssm @('set',$fbSvc,'Start','SERV
 Nssm @('install',$frpSvc,$frpcExe); Nssm @('set',$frpSvc,'AppParameters',"-c `"$frpcCfg`"")
 Nssm @('set',$frpSvc,'AppDirectory',$panel); Nssm @('set',$frpSvc,'AppExit','Default','Restart')
 Nssm @('set',$frpSvc,'AppRestartDelay','5000'); Nssm @('set',$frpSvc,'Start','SERVICE_AUTO_START')
-Nssm @('start',$fbSvc); Nssm @('start',$frpSvc)
-Start-Sleep -Seconds 5
+# start services; nssm may briefly report START_PENDING - poll real status instead
+& $nssmExe start $fbSvc 2>$null | Out-Null
+& $nssmExe start $frpSvc 2>$null | Out-Null
+Start-Sleep -Seconds 8
+foreach ($s in @($fbSvc, $frpSvc)) {
+    if ((Get-Service $s -ErrorAction SilentlyContinue).Status -ne 'Running') { Die "服务 $s 未能在启动后进入 Running" }
+}
 
 # ---------- 管理工具子目录:启停/状态脚本(模板复制 + 占位替换) ----------
 $toolsDir = Join-Path $DataDir '管理工具'
