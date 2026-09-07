@@ -22,7 +22,7 @@ INVITES    = os.path.join(DIR, "invites.conf")
 PUB_IP     = os.path.join(DIR, "public_ip")
 PAN_CTL    = "/usr/local/bin/pan-ctl"
 HOST, PORT = "127.0.0.1", 9100
-INVITE_TTL = 24 * 3600
+INVITE_TTL = 7 * 24 * 3600   # 邀请码有效期:7 天
 
 def pub_ip():
     try: return open(PUB_IP).read().strip()

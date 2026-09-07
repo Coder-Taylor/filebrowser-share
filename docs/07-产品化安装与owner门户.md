@@ -32,7 +32,7 @@ owner 给朋友两样东西:① **安装包**(一个文件夹:install-site.ps1 +
 
 ```
 朋友脚本 → POST http://<SERVER_IP>:8089/api/invite/redeem {"invite":"PAN-xxx"}
-    → 47:pan-web 校验(一次性、24h 有效)→ 调 pan-ctl add-site 自动分端口/token
+    → 47:pan-web 校验(一次性、7 天内有效)→ 调 pan-ctl add-site 自动分端口/token
     → 返回 {siteName, httpPort, serverPort, remotePort, token}
     → 脚本据此在本地生成全部配置
 ```
